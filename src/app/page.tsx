@@ -1,113 +1,120 @@
-import Image from "next/image";
+'use client'
+import { useState } from 'react';
 
 export default function Home() {
+  const [username, setUsername] = useState<string>('');
+  const [message, setMessage] = useState<string>('');
+
+  // Converte uma string Base64URL para ArrayBuffer
+  const base64URLToArrayBuffer = (base64URL: string): ArrayBuffer => {
+    const padding = '='.repeat((4 - (base64URL.length % 4)) % 4);
+    const base64 = (base64URL + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    return Uint8Array.from([...rawData].map(char => char.charCodeAt(0))).buffer;
+  };
+
+  // Converte um ArrayBuffer para uma string Base64URL
+  const arrayBufferToBase64URL = (buffer: ArrayBuffer): string => {
+    const binary = String.fromCharCode.apply(null, new Uint8Array(buffer));
+    return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  };
+
+  const register = async () => {
+    // Solicita as opções de registro ao backend
+    const response = await fetch('http://localhost:3004/session/generate-registration-options', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username }),
+    });
+
+    const options = await response.json();
+
+    // Converte desafios de Base64URL para ArrayBuffer
+    options.challenge = base64URLToArrayBuffer(options.challenge);
+    options.user.id = base64URLToArrayBuffer(options.user.id);
+
+    // Usa a API WebAuthn para criar credenciais
+    const credential = await navigator.credentials.create({
+      publicKey: options,
+    }) as PublicKeyCredential;
+
+    // Envia as credenciais ao backend para verificação
+    const attestationResponse = {
+      id: credential.id,
+      rawId: arrayBufferToBase64URL(credential.rawId),
+      response: {
+        clientDataJSON: arrayBufferToBase64URL(credential.response.clientDataJSON),
+        attestationObject: arrayBufferToBase64URL((credential.response as AuthenticatorAttestationResponse).attestationObject!),
+      },
+      type: credential.type,
+    };
+
+    const verifyResponse = await fetch('http://localhost:3004/session/verify-registration', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, attestation: attestationResponse }),
+    });
+
+    const { verified } = await verifyResponse.json();
+    setMessage(verified ? 'Registro bem-sucedido!' : 'Falha no registro.');
+  };
+
+  const authenticate = async () => {
+    // Solicita as opções de autenticação ao backend
+    const response = await fetch('http://localhost:3004/session/generate-authentication-options', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username }),
+    });
+
+    const options = await response.json();
+
+    // Converte o desafio de Base64URL para ArrayBuffer
+    options.challenge = base64URLToArrayBuffer(options.challenge);
+    options.allowCredentials = options.allowCredentials.map((cred: any) => ({
+      ...cred,
+      id: base64URLToArrayBuffer(cred.id),
+    }));
+
+    // Usa a API WebAuthn para assinar o desafio
+    const assertion = await navigator.credentials.get({
+      publicKey: options,
+    }) as PublicKeyCredential;
+
+    // Envia a assinatura ao backend para verificação
+    const assertionResponse = {
+      id: assertion.id,
+      rawId: arrayBufferToBase64URL(assertion.rawId),
+      response: {
+        clientDataJSON: arrayBufferToBase64URL(assertion.response.clientDataJSON),
+        authenticatorData: arrayBufferToBase64URL((assertion.response as AuthenticatorAssertionResponse).authenticatorData!),
+        signature: arrayBufferToBase64URL((assertion.response as AuthenticatorAssertionResponse).signature!),
+      },
+      type: assertion.type,
+    };
+
+    const verifyResponse = await fetch('http://localhost:3004/session/verify-authentication', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, assertion: assertionResponse }),
+    });
+
+    const { verified } = await verifyResponse.json();
+    setMessage(verified ? 'Autenticação bem-sucedida!' : 'Falha na autenticação.');
+  };
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          Get started by editing&nbsp;
-          <code className="font-mono font-bold">src/app/page.tsx</code>
-        </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:size-auto lg:bg-none">
-          <a
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{" "}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className="dark:invert"
-              width={100}
-              height={24}
-              priority
-            />
-          </a>
-        </div>
-      </div>
-
-      <div className="relative z-[-1] flex place-items-center before:absolute before:h-[300px] before:w-full before:-translate-x-1/2 before:rounded-full before:bg-gradient-radial before:from-white before:to-transparent before:blur-2xl before:content-[''] after:absolute after:-z-20 after:h-[180px] after:w-full after:translate-x-1/3 after:bg-gradient-conic after:from-sky-200 after:via-blue-200 after:blur-2xl after:content-[''] before:dark:bg-gradient-to-br before:dark:from-transparent before:dark:to-blue-700 before:dark:opacity-10 after:dark:from-sky-900 after:dark:via-[#0141ff] after:dark:opacity-40 sm:before:w-[480px] sm:after:w-[240px] before:lg:h-[360px]">
-        <Image
-          className="relative dark:drop-shadow-[0_0_0.3rem_#ffffff70] dark:invert"
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
-
-      <div className="mb-32 grid text-center lg:mb-0 lg:w-full lg:max-w-5xl lg:grid-cols-4 lg:text-left">
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Docs{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-sm opacity-50">
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
-
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Learn{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-sm opacity-50">
-            Learn about Next.js in an interactive course with&nbsp;quizzes!
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Templates{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-sm opacity-50">
-            Explore starter templates for Next.js.
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Deploy{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-balance text-sm opacity-50">
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
-    </main>
+    <div className="flex flex-col gap-4 w-52 bg-slate-100">
+      <h1>WebAuthn Demo</h1>
+      <input 
+        type="text" 
+        placeholder="Nome de Usuário" 
+        value={username} 
+        onChange={(e) => setUsername(e.target.value)} 
+      />
+      <button onClick={register}>Registrar</button>
+      <button onClick={authenticate}>Autenticar</button>
+      <p>{message}</p>
+    </div>
   );
 }
