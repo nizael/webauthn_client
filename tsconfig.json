@@ -1,13 +1,15 @@
 {
   "compilerOptions": {
+    "target": "ES2015",  // ou "ES2017", "ES2019", "ES2020", etc.
+    "module": "commonjs",
+    "forceConsistentCasingInFileNames": true,
+    "downlevelIteration": true,
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
     "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
