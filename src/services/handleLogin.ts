@@ -1,18 +1,19 @@
 import { base64urlToBase64 } from "@/utils/base64urlToBase64";
 import axios from "axios";
 
-export const handleLogin = async (formData: FormData) => {
-  const username = String(formData.get('username'))
-
+export const handleLogin = async () => {
   try {
-    const { data } = await axios.post('/api/generate-authentication', { username });
+    const { data } = await axios.post('/api/generate-authentication');
     const challenge = Uint8Array.from(atob(base64urlToBase64(data.challenge)), c => c.charCodeAt(0));
     const publicKeyCredentialRequestOptions: PublicKeyCredentialRequestOptions = {
       challenge,
-      allowCredentials: data.credentials.map((cred: any) => ({
-        id: Uint8Array.from(atob(cred.credentialId).toString(), c => c.charCodeAt(0)),
-        type: 'public-key',
-      })),
+      allowCredentials: data.credentials?.map((cred: any) => {
+        console.log(cred.credentialId)
+        return {
+          id: Uint8Array.from(atob(cred.credentialId), c => c.charCodeAt(0)),
+          type: 'public-key',
+        }
+      }),
     };
 
     const assertion = await navigator.credentials.get({
@@ -33,4 +34,4 @@ export const handleLogin = async (formData: FormData) => {
     console.error(error);
     alert('Login failed');
   }
-}
+};
